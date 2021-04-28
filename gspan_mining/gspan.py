@@ -9,11 +9,12 @@ import copy
 import itertools
 import time
 
-from .graph import AUTO_EDGE_ID
-from .graph import Graph
-from .graph import VACANT_GRAPH_ID
-from .graph import VACANT_VERTEX_LABEL
+from graph import AUTO_EDGE_ID
+from graph import Graph
+from graph import VACANT_GRAPH_ID
+from graph import VACANT_VERTEX_LABEL
 
+from CodePropertyGraph.cpg import *
 import pandas as pd
 
 
@@ -84,7 +85,7 @@ class DFScode(list):
         self.append(DFSedge(frm, to, vevlb))
         return self
 
-    def to_graph(self, gid=VACANT_GRAPH_ID, is_undirected=True):
+    def to_graph(self, gid=VACANT_GRAPH_ID, is_undirected=False):
         """Construct a graph according to the dfs code."""
         g = Graph(gid,
                   is_undirected=is_undirected,
@@ -183,17 +184,15 @@ class gSpan(object):
     """`gSpan` algorithm."""
 
     def __init__(self,
-                 database_file_name,
                  min_support=10,
                  min_num_vertices=1,
                  max_num_vertices=float('inf'),
                  max_ngraphs=float('inf'),
-                 is_undirected=True,
+                 is_undirected=False,
                  verbose=False,
                  visualize=False,
                  where=False):
         """Initialize gSpan instance."""
-        self._database_file_name = database_file_name
         self.graphs = dict()
         self._max_ngraphs = max_ngraphs
         self._is_undirected = is_undirected
@@ -238,28 +237,25 @@ class gSpan(object):
     @record_timestamp
     def _read_graphs(self):
         self.graphs = dict()
-        with codecs.open(self._database_file_name, 'r', 'utf-8') as f:
-            lines = [line.strip() for line in f.readlines()]
-            tgraph, graph_cnt = None, 0
-            for i, line in enumerate(lines):
-                cols = line.split(' ')
-                if cols[0] == 't':
-                    if tgraph is not None:
-                        self.graphs[graph_cnt] = tgraph
-                        graph_cnt += 1
-                        tgraph = None
-                    if cols[-1] == '-1' or graph_cnt >= self._max_ngraphs:
-                        break
-                    tgraph = Graph(graph_cnt,
-                                   is_undirected=self._is_undirected,
-                                   eid_auto_increment=True)
-                elif cols[0] == 'v':
-                    tgraph.add_vertex(cols[1], cols[2])
-                elif cols[0] == 'e':
-                    tgraph.add_edge(AUTO_EDGE_ID, cols[1], cols[2], cols[3])
-            # adapt to input files that do not end with 't # -1'
-            if tgraph is not None:
-                self.graphs[graph_cnt] = tgraph
+        # Query to DB to get graph id
+        graph_lst = CSVGraph.getCPGs()
+        # For each graph id:
+        for g in graph_lst:
+            gid = g.id
+            tgraph = Graph(gid,
+                           is_undirected=self._is_undirected,
+                           eid_auto_increment=True)
+            # Add vertices to graph
+            vertices = CSVNode.getNodes(gid)
+            for vt in vertices:
+                tgraph.add_vertex(vt.node_id, vt.labels)
+            # Add edges to graph
+            edges = CSVEdge.getEdges(gid)
+
+            for e in edges:
+                tgraph.add_edge(AUTO_EDGE_ID, e.out_vertex, e.in_vertex, e.labels)
+
+            self.graphs[gid] = tgraph
         return self
 
     @record_timestamp
@@ -329,6 +325,14 @@ class gSpan(object):
             return
         g = self._DFScode.to_graph(gid=next(self._counter),
                                    is_undirected=self._is_undirected)
+        lbl = [v.vlb for v in g.vertices.values()]
+        is_vuln = False
+        for lb in lbl:
+            if "True" in lb:
+                is_vuln = True
+                break
+        if not is_vuln:
+            return
         display_str = g.display()
         print('\nSupport: {}'.format(self._support))
 
