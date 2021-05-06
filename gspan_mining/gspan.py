@@ -3,7 +3,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import codecs
 import collections
 import copy
 import itertools
@@ -14,7 +13,8 @@ from graph import Graph
 from graph import VACANT_GRAPH_ID
 from graph import VACANT_VERTEX_LABEL
 
-from CodePropertyGraph.cpg import *
+from src.CodePropertyGraph.cpg import *
+from src.CodePropertyGraph.cpg_pattern import *
 import pandas as pd
 
 
@@ -90,13 +90,26 @@ class DFScode(list):
         g = Graph(gid,
                   is_undirected=is_undirected,
                   eid_auto_increment=True)
+
+        graph = GraphPattern(False)
+        _gid = GraphPattern.addPattern(graph)
         for dfsedge in self:
             frm, to, (vlb1, elb, vlb2) = dfsedge.frm, dfsedge.to, dfsedge.vevlb
             if vlb1 != VACANT_VERTEX_LABEL:
                 g.add_vertex(frm, vlb1)
+                if "True" in vlb1:
+                    GraphPattern.update_vuln(_gid, True)
+                tmp_node = PatternNode(frm, _gid, vlb1)
+                PatternNode.addNode(tmp_node)
             if vlb2 != VACANT_VERTEX_LABEL:
                 g.add_vertex(to, vlb2)
+                if "True" in vlb2:
+                    GraphPattern.update_vuln(_gid, True)
+                tmp_node = PatternNode(to, _gid, vlb2)
+                PatternNode.addNode(tmp_node)
             g.add_edge(AUTO_EDGE_ID, frm, to, elb)
+            tmp_edge = PatternEdge(to, frm, elb, _gid)
+            PatternEdge.addEdge(tmp_edge)
         return g
 
     def from_graph(self, g):
