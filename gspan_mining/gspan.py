@@ -13,8 +13,7 @@ from graph import Graph
 from graph import VACANT_GRAPH_ID
 from graph import VACANT_VERTEX_LABEL
 
-from src.CodePropertyGraph.cpg import *
-from src.CodePropertyGraph.cpg_pattern import *
+from src.code_property_graph.cpg import *
 import pandas as pd
 
 
@@ -91,25 +90,13 @@ class DFScode(list):
                   is_undirected=is_undirected,
                   eid_auto_increment=True)
 
-        graph = GraphPattern(False)
-        _gid = GraphPattern.addPattern(graph)
         for dfsedge in self:
             frm, to, (vlb1, elb, vlb2) = dfsedge.frm, dfsedge.to, dfsedge.vevlb
             if vlb1 != VACANT_VERTEX_LABEL:
                 g.add_vertex(frm, vlb1)
-                if "True" in vlb1:
-                    GraphPattern.update_vuln(_gid, True)
-                tmp_node = PatternNode(frm, _gid, vlb1)
-                PatternNode.addNode(tmp_node)
             if vlb2 != VACANT_VERTEX_LABEL:
                 g.add_vertex(to, vlb2)
-                if "True" in vlb2:
-                    GraphPattern.update_vuln(_gid, True)
-                tmp_node = PatternNode(to, _gid, vlb2)
-                PatternNode.addNode(tmp_node)
             g.add_edge(AUTO_EDGE_ID, frm, to, elb)
-            tmp_edge = PatternEdge(to, frm, elb, _gid)
-            PatternEdge.addEdge(tmp_edge)
         return g
 
     def from_graph(self, g):
@@ -197,7 +184,8 @@ class gSpan(object):
     """`gSpan` algorithm."""
 
     def __init__(self,
-                 min_support=10,
+                 min_support=0.5,
+                 max_support=0.3,
                  min_num_vertices=1,
                  max_num_vertices=float('inf'),
                  max_ngraphs=float('inf'),
@@ -210,10 +198,11 @@ class gSpan(object):
         self._max_ngraphs = max_ngraphs
         self._is_undirected = is_undirected
         self._min_support = min_support
+        self._max_support = max_support
         self._min_num_vertices = min_num_vertices
         self._max_num_vertices = max_num_vertices
         self._DFScode = DFScode()
-        self._support = 0
+        self._support = [0,0]
         self._frequent_size1_subgraphs = list()
         # Include subgraphs with
         # any num(but >= 2, <= max_num_vertices) of vertices.
@@ -252,10 +241,24 @@ class gSpan(object):
         self.graphs = dict()
         # Query to DB to get graph id
         graph_lst = CSVGraph.getCPGs()
+
+        num_not_vuln_graphs = [g.vuln_lines for g in graph_lst].count("")
+        num_vuln_graphs = len(graph_lst) - num_not_vuln_graphs
+        print([g.vuln_lines for g in graph_lst])
+        print("\nte", num_vuln_graphs, num_not_vuln_graphs)
+        print("\nheeee", self._max_support, self._min_support)
+        self._max_support = self._max_support * num_not_vuln_graphs
+        self._min_support = self._min_support * num_vuln_graphs
+
+        print("\nhe", self._max_support, self._min_support)
         # For each graph id:
         for g in graph_lst:
             gid = g.id
+            is_vuln_graph = False
+            if g.vuln_lines != "":
+                is_vuln_graph = True
             tgraph = Graph(gid,
+                           is_vulnerable=is_vuln_graph,
                            is_undirected=self._is_undirected,
                            eid_auto_increment=True)
             # Add vertices to graph
@@ -325,7 +328,13 @@ class gSpan(object):
             self._DFScode.pop()
 
     def _get_support(self, projected):
-        return len(set([pdfs.gid for pdfs in projected]))
+        cnt = [0,0]
+        for gid in set([pdfs.gid for pdfs in projected]):
+            if self.graphs[gid].is_vulnerable:
+                cnt[0] += 1
+            else:
+                cnt[1] += 1
+        return cnt
 
     def _report_size1(self, g, support):
         g.display()
@@ -338,14 +347,7 @@ class gSpan(object):
             return
         g = self._DFScode.to_graph(gid=next(self._counter),
                                    is_undirected=self._is_undirected)
-        lbl = [v.vlb for v in g.vertices.values()]
-        is_vuln = False
-        for lb in lbl:
-            if "True" in lb:
-                is_vuln = True
-                break
-        if not is_vuln:
-            return
+
         display_str = g.display()
         print('\nSupport: {}'.format(self._support))
 
@@ -523,7 +525,9 @@ class gSpan(object):
 
     def _subgraph_mining(self, projected):
         self._support = self._get_support(projected)
-        if self._support < self._min_support:
+        if self._support[0] < self._min_support:
+            return
+        if self._support[1] > self._max_support:
             return
         if not self._is_min():
             return

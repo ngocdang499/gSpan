@@ -22,13 +22,17 @@ def main(FLAGS=None):
     #     sys.exit()
 
     gs = gSpan(
-        min_support=1000,
+        min_support=0.06,
+        max_support=0.2,
         is_undirected=False,
         min_num_vertices=3
     )
 
     gs.run()
+    # print('\nfrequent dub: {}'.format(g.))
+    # print(g.)
     gs.time_stats()
+
     return gs
 
 
